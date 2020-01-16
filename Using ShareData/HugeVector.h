@@ -185,7 +185,7 @@ namespace HugeContainers {
 			return 0;
 		}
 
-		void removeFromMap(qint64 pos) const {
+		/*void removeFromMap(qint64 pos) const {
 			auto fileIter = m_d->m_memoryMap->find(pos);
 			Q_ASSERT(fileIter != m_d->m_memoryMap->end());
 			if (fileIter.value())
@@ -208,9 +208,19 @@ namespace HugeContainers {
 			}
 			if (fileIter == m_d->m_memoryMap->end())
 				m_d->m_device->resize(m_d->m_memoryMap->lastKey());
+		}*/
+
+		void removeFromMap(qint64 pos) const {
+			auto fileIter = m_d->m_memoryMap->find(pos);
+			Q_ASSERT(fileIter != m_d->m_memoryMap->end());
+			if (fileIter.value())
+				return;
+			fileIter.value() = true;
+			m_d->m_memoryMap->erase(fileIter);
 		}
 
 
+	
 		qint64 writeElementInMap(const ValueType& val) const
 		{
 			QByteArray block;
@@ -403,6 +413,11 @@ namespace HugeContainers {
 		bool correctIndex(const uint& index) {
 			return ((index >= 0) && (m_d->m_itemsMap->size() > index));
 		}
+		int memMapsize() const
+		{
+			return m_d->m_memoryMap->size();
+		}
+	    
 	};
 
 }
