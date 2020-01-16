@@ -6,7 +6,6 @@
 #include <QDir>
 #include <QDirIterator>
 #include <qvector.h>
-#include <qset.h>
 #include <QSharedData>
 #include <QSharedDataPointer>
 #include <QExplicitlySharedDataPointer>
@@ -162,8 +161,6 @@ namespace HugeContainers {
 
 		};
 
-
-		using NormalContaineType = typename std::conditional<true, QVector<ValueType>, QSet<ValueType> >::type;
 		QExplicitlySharedDataPointer<HugeContainerData<ValueType>> m_d;
 
 
@@ -184,31 +181,6 @@ namespace HugeContainers {
 			Q_UNREACHABLE();
 			return 0;
 		}
-
-		/*void removeFromMap(qint64 pos) const {
-			auto fileIter = m_d->m_memoryMap->find(pos);
-			Q_ASSERT(fileIter != m_d->m_memoryMap->end());
-			if (fileIter.value())
-				return;
-			if (fileIter != m_d->m_memoryMap->begin()) {
-				if ((fileIter - 1).value()) {
-					fileIter = m_d->m_memoryMap->erase(fileIter);
-					Q_ASSERT(fileIter != m_d->m_memoryMap->end());
-					if (fileIter.value())
-						fileIter = m_d->m_memoryMap->erase(fileIter);
-					if (fileIter == m_d->m_memoryMap->end())
-						m_d->m_device->resize(m_d->m_memoryMap->lastKey());
-					return;
-				}
-			}
-			fileIter.value() = true;
-			if (++fileIter != m_d->m_memoryMap->end()) {
-				if (fileIter.value())
-					fileIter = m_d->m_memoryMap->erase(fileIter);
-			}
-			if (fileIter == m_d->m_memoryMap->end())
-				m_d->m_device->resize(m_d->m_memoryMap->lastKey());
-		}*/
 
 		void removeFromMap(qint64 pos) const {
 			auto fileIter = m_d->m_memoryMap->find(pos);
@@ -236,7 +208,7 @@ namespace HugeContainers {
 
 		bool saveQueue(const uint& index) const {
 			bool allOk = false;
-			auto valToWrite = m_d->m_itemsMap->begin() + index; // last value iterator
+			auto valToWrite = m_d->m_itemsMap->begin() + index; 
 			
 			const qint64 result = writeElementInMap(*(valToWrite->val()));
 			if (result >= 0) {
@@ -413,9 +385,34 @@ namespace HugeContainers {
 		bool correctIndex(const uint& index) {
 			return ((index >= 0) && (m_d->m_itemsMap->size() > index));
 		}
+
 		int memMapsize() const
 		{
 			return m_d->m_memoryMap->size();
+		}
+
+		inline const ValueType& first() const
+		{
+			Q_ASSERT(!isEmpty());
+			return at(0);
+		}
+
+		inline ValueType& first()
+		{
+			Q_ASSERT(!isEmpty());
+			return const_cast<ValueType&>(at(0));
+		}
+
+		inline const ValueType& last() const
+		{
+			Q_ASSERT(!isEmpty());
+			return at(size() - 1);
+		}
+
+		inline ValueType& last()
+		{
+			Q_ASSERT(!isEmpty());
+			return const_cast<ValueType&>(at(size() - 1));
 		}
 	    
 	};
