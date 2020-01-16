@@ -224,9 +224,9 @@ namespace HugeContainers {
 		}
 
 
-		bool saveQueue() const {
+		bool saveQueue(const uint& index) const {
 			bool allOk = false;
-			auto valToWrite = m_d->m_itemsMap->rbegin(); // last value iterator
+			auto valToWrite = m_d->m_itemsMap->begin() + index; // last value iterator
 			
 			const qint64 result = writeElementInMap(*(valToWrite->val()));
 			if (result >= 0) {
@@ -239,7 +239,7 @@ namespace HugeContainers {
 		bool enqueueValue(std::unique_ptr<ValueType>& val) const
 		{
 			m_d->m_itemsMap->push_back(ContainerObject<ValueType>(val.release()));
-			if (saveQueue()) {
+			if (saveQueue(size()-1)) {
 				return true;
 			}
 		    return false;
@@ -320,17 +320,46 @@ namespace HugeContainers {
 			
 		}
 
+		/*if index is not correct then append to the vector*/
+		void insert(uint index, const ValueType &val) {
+
+			if (!correctIndex(index))
+				index = size();
+		
+			m_d.detach();
+			auto tempval = std::make_unique<ValueType>(val);
+			m_d->m_itemsMap->insert(index, ContainerObject<ValueType>(tempval.release()));
+			saveQueue(index);
+		}
+
+
+		void insert(const uint& index, ValueType* val)
+		{
+			if (!val)
+				return;
+
+			if (!correctIndex(index))
+				return;
+
+			m_d.detach();
+			std::unique_ptr<ValueType> tempval(val);
+
+			m_d->m_itemsMap->insert(index, ContainerObject<ValueType>(tempval.release()));
+			saveQueue(index);
+		}
+
+
 		/* Must be put correct index for finding value */
-		const ValueType& at(const uint& index) const
+		const ValueType& at(const uint& index)
 		{
 			auto valueIter = m_d->m_itemsMap->begin() + index;
 			Q_ASSERT(valueIter != m_d->m_itemsMap->end());
-			if (!valueIter->isAvailable()) {
-				auto result = valueFromBlock(index);
-				Q_ASSERT(result);
-				valueIter->setVal(result.release());
-			}
-			return *(valueIter->val());
+			
+			auto result = valueFromBlock(index);
+			Q_ASSERT(result);
+			
+			m_d.detach();
+			return *(result.release());
 		}
 
 		bool removeAt(const uint& index)
