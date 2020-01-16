@@ -185,6 +185,30 @@ namespace HugeContainers {
 			return 0;
 		}
 
+		void removeFromMap(qint64 pos) const {
+			auto fileIter = m_d->m_memoryMap->find(pos);
+			Q_ASSERT(fileIter != m_d->m_memoryMap->end());
+			if (fileIter.value())
+				return;
+			if (fileIter != m_d->m_memoryMap->begin()) {
+				if ((fileIter - 1).value()) {
+					fileIter = m_d->m_memoryMap->erase(fileIter);
+					Q_ASSERT(fileIter != m_d->m_memoryMap->end());
+					if (fileIter.value())
+						fileIter = m_d->m_memoryMap->erase(fileIter);
+					if (fileIter == m_d->m_memoryMap->end())
+						m_d->m_device->resize(m_d->m_memoryMap->lastKey());
+					return;
+				}
+			}
+			fileIter.value() = true;
+			if (++fileIter != m_d->m_memoryMap->end()) {
+				if (fileIter.value())
+					fileIter = m_d->m_memoryMap->erase(fileIter);
+			}
+			if (fileIter == m_d->m_memoryMap->end())
+				m_d->m_device->resize(m_d->m_memoryMap->lastKey());
+		}
 
 
 		qint64 writeElementInMap(const ValueType& val) const
@@ -262,12 +286,11 @@ namespace HugeContainers {
 
 	public:
 
-		//Need to impliment in future if require. 
 		HugeContainer()
 			:m_d(new HugeContainerData<ValueType>{})
 		{
-
 		}
+
 		HugeContainer(const HugeContainer& other) = default;
 		HugeContainer& operator=(const HugeContainer& other) = default;
 		HugeContainer& operator=(HugeContainer&& other) Q_DECL_NOTHROW {
@@ -297,6 +320,7 @@ namespace HugeContainers {
 			
 		}
 
+		/* Must be put correct index for finding value */
 		const ValueType& at(const uint& index) const
 		{
 			auto valueIter = m_d->m_itemsMap->begin() + index;
@@ -307,6 +331,18 @@ namespace HugeContainers {
 				valueIter->setVal(result.release());
 			}
 			return *(valueIter->val());
+		}
+
+		bool removeAt(const uint& index)
+		{
+			if (!correctIndex(index))
+				return false;
+			m_d.detach();
+			auto itemIter = m_d->m_itemsMap->begin() + index;
+			Q_ASSERT(itemIter != m_d->m_itemsMap->end());
+			removeFromMap(itemIter->fPos());
+			m_d->m_itemsMap->erase(itemIter);
+			return true;
 		}
 
 		void clear()
@@ -333,6 +369,10 @@ namespace HugeContainers {
 		bool isEmpty() const
 		{
 			return m_d->m_itemsMap->isEmpty();
+		}
+
+		bool correctIndex(const uint& index) {
+			return ((index >= 0) && (m_d->m_itemsMap->size() > index));
 		}
 	};
 
