@@ -330,10 +330,11 @@ namespace HugeContainers {
 			saveQueue(index);
 		}
 
-
 		/* Must be put correct index for finding value */
-		const ValueType& at(const uint& index)
+		const ValueType& at(const uint& index) 
 		{
+			Q_ASSERT(!isEmpty());
+
 			auto valueIter = m_d->m_itemsMap->begin() + index;
 			Q_ASSERT(valueIter != m_d->m_itemsMap->end());
 			
