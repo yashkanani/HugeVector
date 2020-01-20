@@ -48,7 +48,7 @@ namespace HugeContainers {
 		typedef struct Frame
 		{
 			explicit Frame::Frame(qint64 fp, qint64 fs)
-				:m_fPos(fp), m_fSize(fs)
+				: m_fPos(fp), m_fSize(fs)
 			{}
 			qint64 m_fPos;
 			qint64 m_fSize;
@@ -119,6 +119,11 @@ namespace HugeContainers {
 			const ValueType* val() const { Q_ASSERT(m_d->m_isAvailable); return m_d->m_data.m_val; }
 			ValueType* val() { Q_ASSERT(m_d->m_isAvailable); m_d.detach(); return m_d->m_data.m_val; }
 			
+
+			void setFPos(const Frame& m_frame) {
+				setFPos(m_frame.m_fPos, m_frame.m_fSize);
+			}
+
 			void setFPos(qint64 fp, qint64 fs)
 			{
 				if (!m_d->m_isAvailable && m_d->m_data.m_frame.m_fPos == fp)
@@ -205,6 +210,7 @@ namespace HugeContainers {
 			
 		}
 
+		
 		void removeFromMap(qint64 pos) const {
 			/*auto fileIter = m_d->m_memoryMap->find(pos);
 			Q_ASSERT(fileIter != m_d->m_memoryMap->end());
@@ -216,7 +222,7 @@ namespace HugeContainers {
 
 
 	
-		qint64 writeElementInData(const ValueType& val) const
+		Frame writeElementInData(const ValueType& val) const
 		{
 			QByteArray block;
 			{
@@ -224,17 +230,50 @@ namespace HugeContainers {
 				writerStream << val;
 			}
 
-			const qint64 result = writeInData(block);
+			Frame result(-1, -1);
+			const qint64 pos = writeInData(block);
+			if (pos >= 0) {
+				result = Frame(pos, block.size());
+			}
+			 
+			return result;
+		}
+
+		bool writeInMap(const QByteArray& block) const
+		{
+			if (!m_d->m_memoryMap->isWritable())
+				return false;
+
+			if (m_d->m_memoryMap->write(block) >= 0) {
+				return true;
+			}
+			return false;
+
+		}
+
+		bool writeElementInMap(const Frame& val) const
+		{
+			QByteArray block;
+			{
+				QDataStream writerStream(&block, QIODevice::WriteOnly);
+				writerStream << val.m_fPos;
+				writerStream << val.m_fSize;
+			}
+
+			const bool result = writeInMap(block);
 			return result;
 		}
 
 		bool saveQueue(std::unique_ptr<ContainerObject<ValueType>>& valToWrite ) const {
 			bool allOk = false;
-			const qint64 result = writeElementInData(*(valToWrite->val()));
-			if (result >= 0) {
-				valToWrite->setFPos(result, result);
-				allOk = true;
+			
+			/*Write the value in DataFile*/
+			const Frame result = writeElementInData(*(valToWrite->val()));
+			if (result.m_fPos >= 0) {
+				/*Write the data in Address File*/
+				allOk = writeElementInMap(result);
 			}
+
 			return allOk;
 		}
 
