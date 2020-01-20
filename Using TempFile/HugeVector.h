@@ -128,27 +128,27 @@ namespace HugeContainers {
 		{
 		public:
 			using ItemMapType = QVector<ContainerObject<ValueType>>;
-			std::unique_ptr<ItemMapType> m_itemsMap;
-			std::unique_ptr<QMap<qint64, bool> > m_memoryMap;
+			std::unique_ptr<QTemporaryFile> m_memoryMap;
 			std::unique_ptr<QTemporaryFile> m_device;
 
 			HugeContainerData()
 				: QSharedData()
 				, m_device(std::make_unique<QTemporaryFile>(QDir::tempPath() + QDir::separator() + QStringLiteral("HugeContainerDataXXXXXX")))
-				, m_memoryMap(std::make_unique<QMap<qint64, bool> >())
-				, m_itemsMap(std::make_unique<ItemMapType>())
+				, m_memoryMap(std::make_unique<QTemporaryFile>(QDir::tempPath() + QDir::separator() + QStringLiteral("HugeContainerDataXXXXXX")))
 			{
 				if (!m_device->open())
 					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a temporary file");
-				m_memoryMap->insert(0, true);
+				m_device->seek(0);
+				if (!m_memoryMap->open())
+					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a temporary file");
+				m_memoryMap->seek(0);
 			}
 			~HugeContainerData() = default;
 			
 			HugeContainerData(HugeContainerData& other)
 				: QSharedData(other)
 				, m_device(std::make_unique<QTemporaryFile>(QDir::tempPath() + QDir::separator() + QStringLiteral("HugeContainerDataXXXXXX")))
-				, m_memoryMap(std::make_unique<QMap<qint64, bool> >(*(other.m_memoryMap)))
-				, m_itemsMap(std::make_unique<ItemMapType>(*(other.m_itemsMap)))
+				, m_memoryMap(std::make_unique<QTemporaryFile>(QDir::tempPath() + QDir::separator() + QStringLiteral("HugeContainerDataXXXXXX")))
 			{
 				if (!m_device->open())
 					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a temporary file");
@@ -157,6 +157,15 @@ namespace HugeContainers {
 				for (; totalSize > 1024; totalSize -= 1024)
 					m_device->write(other.m_device->read(1024));
 				m_device->write(other.m_device->read(totalSize));
+
+				if (!m_memoryMap->open())
+					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a temporary file");
+				other.m_memoryMap->seek(0);
+				totalSize = other.m_memoryMap->size();
+				for (; totalSize > 1024; totalSize -= 1024)
+					m_memoryMap->write(other.m_memoryMap->read(1024));
+				m_memoryMap->write(other.m_memoryMap->read(totalSize));
+
 			}
 
 		};
@@ -169,26 +178,22 @@ namespace HugeContainers {
 			if (!m_d->m_device->isWritable())
 				return -1;
 
-			auto i = m_d->m_memoryMap->end()-1; // last value iterator
-			if (i.value()) {
-				m_d->m_memoryMap->insert(i.key() + block.size(), true);		
-				i.value() = false;
-				m_d->m_device->seek(i.key());
-				if (m_d->m_device->write(block) >= 0)
-					return i.key();
-				return -1;
+			auto pos = m_d->m_device->pos();
+			m_d->m_device->seek(pos);
+			if (m_d->m_device->write(block) >= 0) {
+				return pos;
 			}
-			Q_UNREACHABLE();
-			return 0;
+			return -1;
+			
 		}
 
 		void removeFromMap(qint64 pos) const {
-			auto fileIter = m_d->m_memoryMap->find(pos);
+			/*auto fileIter = m_d->m_memoryMap->find(pos);
 			Q_ASSERT(fileIter != m_d->m_memoryMap->end());
 			if (fileIter.value())
 				return;
 			fileIter.value() = true;
-			m_d->m_memoryMap->erase(fileIter);
+			m_d->m_memoryMap->erase(fileIter);*/
 		}
 
 
@@ -206,10 +211,8 @@ namespace HugeContainers {
 		}
 
 
-		bool saveQueue(const uint& index) const {
+		bool saveQueue(std::unique_ptr<ContainerObject<ValueType>>& valToWrite ) const {
 			bool allOk = false;
-			auto valToWrite = m_d->m_itemsMap->begin() + index; 
-			
 			const qint64 result = writeElementInMap(*(valToWrite->val()));
 			if (result >= 0) {
 				valToWrite->setFPos(result);
@@ -220,8 +223,8 @@ namespace HugeContainers {
 
 		bool enqueueValue(std::unique_ptr<ValueType>& val) const
 		{
-			m_d->m_itemsMap->push_back(ContainerObject<ValueType>(val.release()));
-			if (saveQueue(size()-1)) {
+			auto tempVal = std::make_unique<ContainerObject<ValueType>>(val.release());
+			if (saveQueue(tempVal)) {
 				return true;
 			}
 		    return false;
@@ -240,27 +243,27 @@ namespace HugeContainers {
 
 		QByteArray readBlock(const uint& index ) const
 		{
-			if (Q_UNLIKELY(!m_d->m_device->isReadable()))
-				return QByteArray();
-			m_d->m_device->setTextModeEnabled(false);
-			
-			auto itemIter = m_d->m_itemsMap->begin() + index;       //  get iterator at particular position
-			Q_ASSERT(itemIter != m_d->m_itemsMap->end());
-			Q_ASSERT(!itemIter->isAvailable());
-			
-			auto fileIter = m_d->m_memoryMap->constFind(itemIter->fPos());
-			Q_ASSERT(fileIter != m_d->m_memoryMap->constEnd());
-			if (fileIter.value())
-				return QByteArray();
-			
-			auto nextIter = fileIter + 1;
-			m_d->m_device->seek(fileIter.key());
+			//if (Q_UNLIKELY(!m_d->m_device->isReadable()))
+			//	return QByteArray();
+			//m_d->m_device->setTextModeEnabled(false);
+			//
+			//auto itemIter = m_d->m_itemsMap->begin() + index;       //  get iterator at particular position
+			//Q_ASSERT(itemIter != m_d->m_itemsMap->end());
+			//Q_ASSERT(!itemIter->isAvailable());
+			//
+			//auto fileIter = m_d->m_memoryMap->constFind(itemIter->fPos());
+			//Q_ASSERT(fileIter != m_d->m_memoryMap->constEnd());
+			//if (fileIter.value())
+			//	return QByteArray();
+			//
+			//auto nextIter = fileIter + 1;
+			//m_d->m_device->seek(fileIter.key());
 			
 			QByteArray result;
-			if (nextIter == m_d->m_memoryMap->constEnd())
+			/*if (nextIter == m_d->m_memoryMap->constEnd())
 				result = m_d->m_device->readAll();
 			else
-				result = m_d->m_device->read(nextIter.key() - fileIter.key());
+				result = m_d->m_device->read(nextIter.key() - fileIter.key());*/
 			
 			return result;
 		}
@@ -292,7 +295,7 @@ namespace HugeContainers {
 			enqueueValue(tempval);
 		}
 		
-		void push_back(ValueType* val)
+		/*void push_back(ValueType* val)
 		{
 			if (!val)
 				return;
@@ -300,122 +303,122 @@ namespace HugeContainers {
 			std::unique_ptr<ValueType> tempval(val);
 			enqueueValue(tempval);
 			
-		}
+		}*/
 
 		/*if index is not correct then append to the vector*/
-		void insert(uint index, const ValueType &val) {
+		//void insert(uint index, const ValueType &val) {
 
-			if (!correctIndex(index))
-				index = size();
-		
-			m_d.detach();
-			auto tempval = std::make_unique<ValueType>(val);
-			m_d->m_itemsMap->insert(index, ContainerObject<ValueType>(tempval.release()));
-			saveQueue(index);
-		}
-
-
-		void insert(const uint& index, ValueType* val)
-		{
-			if (!val)
-				return;
-
-			if (!correctIndex(index))
-				return;
-
-			m_d.detach();
-			std::unique_ptr<ValueType> tempval(val);
-
-			m_d->m_itemsMap->insert(index, ContainerObject<ValueType>(tempval.release()));
-			saveQueue(index);
-		}
+		//	if (!correctIndex(index))
+		//		index = size();
+		//
+		//	m_d.detach();
+		//	auto tempval = std::make_unique<ValueType>(val);
+		//	m_d->m_itemsMap->insert(index, ContainerObject<ValueType>(tempval.release()));
+		//	saveQueue(index);
+		//}
 
 
-		/* Must be put correct index for finding value */
-		const ValueType& at(const uint& index)
-		{
-			Q_ASSERT(!isEmpty());
+		//void insert(const uint& index, ValueType* val)
+		//{
+		//	if (!val)
+		//		return;
 
-			auto valueIter = m_d->m_itemsMap->begin() + index;
-			Q_ASSERT(valueIter != m_d->m_itemsMap->end());
-			
-			auto result = valueFromBlock(index);
-			Q_ASSERT(result);
-			
-			m_d.detach();
-			return *(result.release());
-		}
+		//	if (!correctIndex(index))
+		//		return;
 
-		bool removeAt(const uint& index)
-		{
-			if (!correctIndex(index))
-				return false;
-			m_d.detach();
-			auto itemIter = m_d->m_itemsMap->begin() + index;
-			Q_ASSERT(itemIter != m_d->m_itemsMap->end());
-			removeFromMap(itemIter->fPos());
-			m_d->m_itemsMap->erase(itemIter);
-			return true;
-		}
+		//	m_d.detach();
+		//	std::unique_ptr<ValueType> tempval(val);
 
-		void clear()
-		{
-			if (isEmpty())
-				return;
-			m_d.detach();
-			if (!m_d->m_device->resize(0)) {
-				Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to resize temporary file");
-			}
-			m_d->m_itemsMap->clear();
-			m_d->m_memoryMap->clear();
-			m_d->m_memoryMap->insert(0, true);
-		}
+		//	m_d->m_itemsMap->insert(index, ContainerObject<ValueType>(tempval.release()));
+		//	saveQueue(index);
+		//}
 
-		int count() const
-		{
-			return size();
-		}
-		int size() const
-		{
-			return m_d->m_itemsMap->size();
-		}
-		bool isEmpty() const
-		{
-			return m_d->m_itemsMap->isEmpty();
-		}
 
-		bool correctIndex(const uint& index) {
-			return ((index >= 0) && (m_d->m_itemsMap->size() > index));
-		}
+		///* Must be put correct index for finding value */
+		//const ValueType& at(const uint& index)
+		//{
+		//	Q_ASSERT(!isEmpty());
 
-		int memMapsize() const
-		{
-			return m_d->m_memoryMap->size();
-		}
+		//	auto valueIter = m_d->m_itemsMap->begin() + index;
+		//	Q_ASSERT(valueIter != m_d->m_itemsMap->end());
+		//	
+		//	auto result = valueFromBlock(index);
+		//	Q_ASSERT(result);
+		//	
+		//	m_d.detach();
+		//	return *(result.release());
+		//}
 
-		inline const ValueType& first() const
-		{
-			Q_ASSERT(!isEmpty());
-			return at(0);
-		}
+		//bool removeAt(const uint& index)
+		//{
+		//	/*if (!correctIndex(index))
+		//		return false;
+		//	m_d.detach();
+		//	auto itemIter = m_d->m_itemsMap->begin() + index;
+		//	Q_ASSERT(itemIter != m_d->m_itemsMap->end());
+		//	removeFromMap(itemIter->fPos());
+		//	m_d->m_itemsMap->erase(itemIter);*/
+		//	return true;
+		//}
 
-		inline ValueType& first()
-		{
-			Q_ASSERT(!isEmpty());
-			return const_cast<ValueType&>(at(0));
-		}
+		//void clear()
+		//{
+		//	if (isEmpty())
+		//		return;
+		//	m_d.detach();
+		//	if (!m_d->m_device->resize(0)) {
+		//		Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to resize temporary file");
+		//	}
+		//	m_d->m_itemsMap->clear();
+		//	m_d->m_memoryMap->clear();
+		//	m_d->m_memoryMap->insert(0, true);
+		//}
 
-		inline const ValueType& last() const
-		{
-			Q_ASSERT(!isEmpty());
-			return at(size() - 1);
-		}
+		//int count() const
+		//{
+		//	return size();
+		//}
+		//int size() const
+		//{
+		//	return m_d->m_itemsMap->size();
+		//}
+		//bool isEmpty() const
+		//{
+		//	return m_d->m_itemsMap->isEmpty();
+		//}
 
-		inline ValueType& last()
-		{
-			Q_ASSERT(!isEmpty());
-			return const_cast<ValueType&>(at(size() - 1));
-		}
+		//bool correctIndex(const uint& index) {
+		//	return ((index >= 0) && (m_d->m_itemsMap->size() > index));
+		//}
+
+		//int memMapsize() const
+		//{
+		//	return m_d->m_memoryMap->size();
+		//}
+
+		//inline const ValueType& first() const
+		//{
+		//	Q_ASSERT(!isEmpty());
+		//	return at(0);
+		//}
+
+		//inline ValueType& first()
+		//{
+		//	Q_ASSERT(!isEmpty());
+		//	return const_cast<ValueType&>(at(0));
+		//}
+
+		//inline const ValueType& last() const
+		//{
+		//	Q_ASSERT(!isEmpty());
+		//	return at(size() - 1);
+		//}
+
+		//inline ValueType& last()
+		//{
+		//	Q_ASSERT(!isEmpty());
+		//	return const_cast<ValueType&>(at(size() - 1));
+		//}
 	    
 	};
 
