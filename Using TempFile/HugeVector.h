@@ -44,25 +44,37 @@ namespace HugeContainers {
 		static_assert(std::is_default_constructible<ValueType>::value, "ValueType must provide a default constructor");
 		static_assert(std::is_copy_constructible<ValueType>::value, "ValueType must provide a copy constructor");
 	private:
+
+		typedef struct Frame
+		{
+			explicit Frame::Frame(qint64 fp, qint64 fs)
+				:m_fPos(fp), m_fSize(fs)
+			{}
+			qint64 m_fPos;
+			qint64 m_fSize;
+		} Frame;
+
+
 		template <class ValueType>
 		struct ContainerObjectData : public QSharedData
 		{
 			bool m_isAvailable;
 			union ObjectData
 			{
-				explicit ObjectData(qint64 fp)
-					:m_fPos(fp)
+				explicit ObjectData(qint64 fp, qint64 fs)
+					:m_frame(fp,fs)
 				{}
 				explicit ObjectData(ValueType* v)
 					:m_val(v)
 				{}
-				qint64 m_fPos;
+
+				Frame m_frame;
 				ValueType* m_val;
 			} m_data;
-			explicit ContainerObjectData(qint64 fp)
+			explicit ContainerObjectData(qint64 fp, qint64 fs)
 				:QSharedData()
 				, m_isAvailable(false)
-				, m_data(fp)
+				, m_data(fp,fs)
 			{}
 			explicit ContainerObjectData(ValueType* v)
 				:QSharedData()
@@ -79,7 +91,7 @@ namespace HugeContainers {
 			ContainerObjectData(const ContainerObjectData& other)
 				:QSharedData(other)
 				, m_isAvailable(other.m_isAvailable)
-				, m_data(other.m_data.m_fPos)
+				, m_data(other.m_data.m_frame.m_fPos, other.m_data.m_frame.m_fSize)
 			{
 				if (m_isAvailable)
 					m_data.m_val = new ValueType(*(other.m_data.m_val));
@@ -91,25 +103,31 @@ namespace HugeContainers {
 		{
 			QExplicitlySharedDataPointer<ContainerObjectData<ValueType> > m_d;
 		public:
-			explicit ContainerObject(qint64 fPos)
-				:m_d(new ContainerObjectData<ValueType>(fPos))
+			explicit ContainerObject(qint64 fPos, qint64 fSize)
+				:m_d(new ContainerObjectData<ValueType>(fPos, fSize))
 			{}
 			explicit ContainerObject(ValueType* val)
 				:m_d(new ContainerObjectData<ValueType>(val))
 			{}
+
 			ContainerObject(const ContainerObject& other) = default;
 			bool isAvailable() const { return m_d->m_isAvailable; }
-			qint64 fPos() const { return m_d->m_data.m_fPos; }
+			
+			qint64 fPos() const { return m_d->m_data.m_frame.m_fPos; }
+			qint64 fSize() const { return m_d->m_data.m_frame.m_fSize; }
+
 			const ValueType* val() const { Q_ASSERT(m_d->m_isAvailable); return m_d->m_data.m_val; }
 			ValueType* val() { Q_ASSERT(m_d->m_isAvailable); m_d.detach(); return m_d->m_data.m_val; }
-			void setFPos(qint64 fp)
+			
+			void setFPos(qint64 fp, qint64 fs)
 			{
-				if (!m_d->m_isAvailable && m_d->m_data.m_fPos == fp)
+				if (!m_d->m_isAvailable && m_d->m_data.m_frame.m_fPos == fp)
 					return;
 				m_d.detach();
 				if (m_d->m_isAvailable)
 					delete m_d->m_data.m_val;
-				m_d->m_data.m_fPos = fp;
+				m_d->m_data.m_frame.m_fPos = fp;
+				m_d->m_data.m_frame.m_fSize = fs;
 				m_d->m_isAvailable = false;
 			}
 			void setVal(ValueType* vl)
@@ -173,7 +191,7 @@ namespace HugeContainers {
 		QExplicitlySharedDataPointer<HugeContainerData<ValueType>> m_d;
 
 
-		qint64 writeInMap(const QByteArray& block) const
+		qint64 writeInData(const QByteArray& block) const
 		{
 			if (!m_d->m_device->isWritable())
 				return -1;
@@ -198,7 +216,7 @@ namespace HugeContainers {
 
 
 	
-		qint64 writeElementInMap(const ValueType& val) const
+		qint64 writeElementInData(const ValueType& val) const
 		{
 			QByteArray block;
 			{
@@ -206,16 +224,15 @@ namespace HugeContainers {
 				writerStream << val;
 			}
 
-			const qint64 result = writeInMap(block);
+			const qint64 result = writeInData(block);
 			return result;
 		}
 
-
 		bool saveQueue(std::unique_ptr<ContainerObject<ValueType>>& valToWrite ) const {
 			bool allOk = false;
-			const qint64 result = writeElementInMap(*(valToWrite->val()));
+			const qint64 result = writeElementInData(*(valToWrite->val()));
 			if (result >= 0) {
-				valToWrite->setFPos(result);
+				valToWrite->setFPos(result, result);
 				allOk = true;
 			}
 			return allOk;
