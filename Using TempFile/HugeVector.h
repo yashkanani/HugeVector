@@ -163,7 +163,7 @@ namespace HugeContainers {
 					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a data file");
 				m_device->seek(0);
 				if (!m_memoryMap->open())
-					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a m_memoryMap file");
+					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a memoryMap file");
 				m_memoryMap->seek(0);
 			}
 			~HugeContainerData() = default;
@@ -182,7 +182,7 @@ namespace HugeContainers {
 				m_device->write(other.m_device->read(totalSize));
 
 				if (!m_memoryMap->open())
-					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a m_memoryMap file");
+					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a memoryMap file");
 				other.m_memoryMap->seek(0);
 				totalSize = other.m_memoryMap->size();
 				for (; totalSize > 1024; totalSize -= 1024)
@@ -481,6 +481,8 @@ namespace HugeContainers {
 		/* Must be put correct index for finding value */
 		const ValueType& at(const uint& index)
 		{
+			Q_ASSERT(correctIndex(index));
+
 			auto result = valueFromBlock(index);
 			Q_ASSERT(result);
 			
@@ -495,64 +497,64 @@ namespace HugeContainers {
 			return true;
 		}
 
-		//void clear()
-		//{
-		//	if (isEmpty())
-		//		return;
-		//	m_d.detach();
-		//	if (!m_d->m_device->resize(0)) {
-		//		Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to resize temporary file");
-		//	}
-		//	m_d->m_itemsMap->clear();
-		//	m_d->m_memoryMap->clear();
-		//	m_d->m_memoryMap->insert(0, true);
-		//}
+		void clear()
+		{
+			if (isEmpty())
+				return;
+			m_d.detach();
+			if (!m_d->m_device->resize(0)) {
+				Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to resize data file");
+			}
+			if (!m_d->m_memoryMap->resize(0)) {
+				Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to resize memoryMap file");
+			}
+			
+		}
 
-		//int count() const
-		//{
-		//	return size();
-		//}
-		//int size() const
-		//{
-		//	return m_d->m_itemsMap->size();
-		//}
-		//bool isEmpty() const
-		//{
-		//	return m_d->m_itemsMap->isEmpty();
-		//}
+		int count() const
+		{
+			return size();
+		}
+		int size() const
+		{
+			return (m_d->m_memoryMap->size()/sizeof(Frame));
+		}
+		bool isEmpty() const
+		{
+			bool ret = true;
+			if (m_d->m_memoryMap->pos() != 0) {
+				ret = false;
+			}
+			return ret;
+		}
 
-		//bool correctIndex(const uint& index) {
-		//	return ((index >= 0) && (m_d->m_itemsMap->size() > index));
-		//}
+		bool correctIndex(const uint& index) {
+			return ((index >= 0) && (this->size() > index));
+		}
 
-		//int memMapsize() const
-		//{
-		//	return m_d->m_memoryMap->size();
-		//}
+		inline const ValueType& first() const
+		{
+			Q_ASSERT(!isEmpty());
+			return at(0);
+		}
 
-		//inline const ValueType& first() const
-		//{
-		//	Q_ASSERT(!isEmpty());
-		//	return at(0);
-		//}
+		inline ValueType& first()
+		{
+			Q_ASSERT(!isEmpty());
+			return const_cast<ValueType&>(at(0));
+		}
 
-		//inline ValueType& first()
-		//{
-		//	Q_ASSERT(!isEmpty());
-		//	return const_cast<ValueType&>(at(0));
-		//}
+		inline const ValueType& last() const
+		{
+			Q_ASSERT(!isEmpty());
+			return at(size() - 1);
+		}
 
-		//inline const ValueType& last() const
-		//{
-		//	Q_ASSERT(!isEmpty());
-		//	return at(size() - 1);
-		//}
-
-		//inline ValueType& last()
-		//{
-		//	Q_ASSERT(!isEmpty());
-		//	return const_cast<ValueType&>(at(size() - 1));
-		//}
+		inline ValueType& last()
+		{
+			Q_ASSERT(!isEmpty());
+			return const_cast<ValueType&>(at(size() - 1));
+		}
 	    
 	};
 
