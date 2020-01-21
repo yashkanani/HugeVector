@@ -44,7 +44,7 @@ namespace HugeContainers {
 		static_assert(std::is_default_constructible<ValueType>::value, "ValueType must provide a default constructor");
 		static_assert(std::is_copy_constructible<ValueType>::value, "ValueType must provide a copy constructor");
 	private:
-
+		
 		typedef struct Frame
 		{
 			explicit Frame::Frame(qint64 fp, qint64 fs)
@@ -160,10 +160,10 @@ namespace HugeContainers {
 				, m_memoryMap(std::make_unique<QTemporaryFile>(QDir::tempPath() + QDir::separator() + QStringLiteral("HugeContainerDataXXXXXX")))
 			{
 				if (!m_device->open())
-					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a temporary file");
+					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a data file");
 				m_device->seek(0);
 				if (!m_memoryMap->open())
-					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a temporary file");
+					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a m_memoryMap file");
 				m_memoryMap->seek(0);
 			}
 			~HugeContainerData() = default;
@@ -174,7 +174,7 @@ namespace HugeContainers {
 				, m_memoryMap(std::make_unique<QTemporaryFile>(QDir::tempPath() + QDir::separator() + QStringLiteral("HugeContainerDataXXXXXX")))
 			{
 				if (!m_device->open())
-					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a temporary file");
+					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a data file");
 				other.m_device->seek(0);
 				qint64 totalSize = other.m_device->size();
 				for (; totalSize > 1024; totalSize -= 1024)
@@ -182,7 +182,7 @@ namespace HugeContainers {
 				m_device->write(other.m_device->read(totalSize));
 
 				if (!m_memoryMap->open())
-					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a temporary file");
+					Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a m_memoryMap file");
 				other.m_memoryMap->seek(0);
 				totalSize = other.m_memoryMap->size();
 				for (; totalSize > 1024; totalSize -= 1024)
@@ -243,7 +243,7 @@ namespace HugeContainers {
 		{
 			if (!m_d->m_memoryMap->isWritable())
 				return false;
-
+			
 			if (m_d->m_memoryMap->write(block) >= 0) {
 				return true;
 			}
@@ -264,23 +264,67 @@ namespace HugeContainers {
 			return result;
 		}
 
-		bool saveQueue(std::unique_ptr<ContainerObject<ValueType>>& valToWrite ) const {
+
+		/* rewrite is very expensive functionality */
+		bool reWriteMap(const uint& index, const uint& at) const {
+			auto readPos = index * sizeof(Frame);
+			auto writePos = at * sizeof(Frame);
+
+			std::unique_ptr<QTemporaryFile> tempFile;
+			tempFile = std::make_unique<QTemporaryFile>(QDir::tempPath() + QDir::separator() + QStringLiteral("HugeContainerDataXXXXXX"));
+
+			if (!tempFile->open())
+				Q_ASSERT_X(false, "HugeContainer::HugeContainer", "Unable to create a temporary file");
+
+			/* write the all address from particular location into temp file */
+			m_d->m_memoryMap->seek(readPos);
+			qint64 totalSize = m_d->m_memoryMap->size() - readPos;
+			for (; totalSize > 1024; totalSize -= 1024)
+				tempFile->write(m_d->m_memoryMap->read(1024));
+			tempFile->write(m_d->m_memoryMap->read(totalSize));
+
+			/* write the all address from temp file to new location in memoryMap file */
+			tempFile->seek(0);
+			m_d->m_memoryMap->seek(writePos);
+			totalSize = tempFile->size();
+			for (; totalSize > 1024; totalSize -= 1024)
+				m_d->m_memoryMap->write(tempFile->read(1024));
+			m_d->m_memoryMap->write(tempFile->read(totalSize));
+			m_d->m_memoryMap->resize(m_d->m_memoryMap->pos());
+			return true;
+		}
+
+
+		bool saveQueue(std::unique_ptr<ContainerObject<ValueType>>& valToWrite, const int &index) const {
 			bool allOk = false;
 			
 			/*Write the value in DataFile*/
 			const Frame result = writeElementInData(*(valToWrite->val()));
 			if (result.m_fPos >= 0) {
 				/*Write the data in Address File*/
-				allOk = writeElementInMap(result);
+				
+				if (index < 0) {
+				   allOk = writeElementInMap(result); 
+				}
+				else {
+				 // Whenever insert funcation is called at that time 
+				 // MemoryMap file will rewrite.
+					if (reWriteMap(index, index + 1)) {
+						auto pos = m_d->m_memoryMap->pos();
+						m_d->m_memoryMap->seek(index * sizeof(Frame));
+						allOk = writeElementInMap(result);
+						m_d->m_memoryMap->seek(pos);
+					}
+				}
 			}
 
 			return allOk;
 		}
 
-		bool enqueueValue(std::unique_ptr<ValueType>& val) const
+		bool enqueueValue(std::unique_ptr<ValueType>& val,const int index = -1) const
 		{
 			auto tempVal = std::make_unique<ContainerObject<ValueType>>(val.release());
-			if (saveQueue(tempVal)) {
+			if (saveQueue(tempVal, index)) {
 				return true;
 			}
 		    return false;
@@ -343,11 +387,14 @@ namespace HugeContainers {
 		{
 			if (Q_UNLIKELY(!m_d->m_device->isReadable()))
 				return QByteArray();
-			m_d->m_device->setTextModeEnabled(false);
-			m_d->m_device->seek(dataFrame.m_fPos);
 
+			m_d->m_device->setTextModeEnabled(false);
+			auto tempPos  = m_d->m_device->pos();
+			m_d->m_device->seek(dataFrame.m_fPos);
+			
 			QByteArray result;
 			result = m_d->m_device->read(dataFrame.m_fSize);
+			m_d->m_device->seek(tempPos);
 			return result;
 		}
 
@@ -359,11 +406,12 @@ namespace HugeContainers {
 			m_d->m_memoryMap->setTextModeEnabled(false);
 			
 			auto startPos = index * sizeof(Frame);
+			auto tempPos = m_d->m_memoryMap->pos();
 			m_d->m_memoryMap->seek(startPos);
 
 			QByteArray result; 
 			result = m_d->m_memoryMap->read(sizeof(Frame)); 
-				
+			m_d->m_memoryMap->seek(tempPos);
 			return result;
 		}
 
@@ -405,32 +453,23 @@ namespace HugeContainers {
 		}
 
 		/*if index is not correct then append to the vector*/
-		//void insert(uint index, const ValueType &val) {
-
-		//	if (!correctIndex(index))
-		//		index = size();
-		//
-		//	m_d.detach();
-		//	auto tempval = std::make_unique<ValueType>(val);
-		//	m_d->m_itemsMap->insert(index, ContainerObject<ValueType>(tempval.release()));
-		//	saveQueue(index);
-		//}
+		void insert(uint index, const ValueType &val) {
+			m_d.detach();
+			auto tempval = std::make_unique<ValueType>(val);
+			enqueueValue(tempval, index);
+		}
 
 
-		//void insert(const uint& index, ValueType* val)
-		//{
-		//	if (!val)
-		//		return;
+		void insert(const uint& index, ValueType* val)
+		{
+			if (!val)
+				return;
 
-		//	if (!correctIndex(index))
-		//		return;
+			m_d.detach();
+			std::unique_ptr<ValueType> tempval(val);
 
-		//	m_d.detach();
-		//	std::unique_ptr<ValueType> tempval(val);
-
-		//	m_d->m_itemsMap->insert(index, ContainerObject<ValueType>(tempval.release()));
-		//	saveQueue(index);
-		//}
+			enqueueValue(tempval, index);
+		}
 
 
 		/* Must be put correct index for finding value */
