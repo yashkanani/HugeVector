@@ -286,11 +286,15 @@ namespace HugeContainers {
 			/* write the all address from temp file to new location in memoryMap file */
 			tempFile->seek(0);
 			m_d->m_memoryMap->seek(writePos);
+
 			totalSize = tempFile->size();
 			for (; totalSize > 1024; totalSize -= 1024)
 				m_d->m_memoryMap->write(tempFile->read(1024));
 			m_d->m_memoryMap->write(tempFile->read(totalSize));
-			m_d->m_memoryMap->resize(m_d->m_memoryMap->pos());
+
+			auto lastPos = m_d->m_memoryMap->pos();
+			m_d->m_memoryMap->resize(lastPos);
+
 			return true;
 		}
 
@@ -302,13 +306,12 @@ namespace HugeContainers {
 			const Frame result = writeElementInData(*(valToWrite->val()));
 			if (result.m_fPos >= 0) {
 				/*Write the data in Address File*/
-				
 				if (index < 0) {
 				   allOk = writeElementInMap(result); 
 				}
 				else {
 				 // Whenever insert funcation is called at that time 
-				 // MemoryMap file will rewrite.
+				 // Address file will rewrite.
 					if (reWriteMap(index, index + 1)) {
 						auto pos = m_d->m_memoryMap->pos();
 						m_d->m_memoryMap->seek(index * sizeof(Frame));
@@ -387,13 +390,14 @@ namespace HugeContainers {
 		{
 			if (Q_UNLIKELY(!m_d->m_device->isReadable()))
 				return QByteArray();
-
 			m_d->m_device->setTextModeEnabled(false);
-			auto tempPos  = m_d->m_device->pos();
+			
+			auto tempPos = m_d->m_device->pos();
 			m_d->m_device->seek(dataFrame.m_fPos);
 			
 			QByteArray result;
 			result = m_d->m_device->read(dataFrame.m_fSize);
+			
 			m_d->m_device->seek(tempPos);
 			return result;
 		}
@@ -405,12 +409,14 @@ namespace HugeContainers {
 				return QByteArray();
 			m_d->m_memoryMap->setTextModeEnabled(false);
 			
-			auto startPos = index * sizeof(Frame);
 			auto tempPos = m_d->m_memoryMap->pos();
+
+			auto startPos = index * sizeof(Frame);
 			m_d->m_memoryMap->seek(startPos);
 
 			QByteArray result; 
 			result = m_d->m_memoryMap->read(sizeof(Frame)); 
+			
 			m_d->m_memoryMap->seek(tempPos);
 			return result;
 		}
@@ -482,17 +488,12 @@ namespace HugeContainers {
 			return *(result.release());
 		}
 
-		//bool removeAt(const uint& index)
-		//{
-		//	/*if (!correctIndex(index))
-		//		return false;
-		//	m_d.detach();
-		//	auto itemIter = m_d->m_itemsMap->begin() + index;
-		//	Q_ASSERT(itemIter != m_d->m_itemsMap->end());
-		//	removeFromMap(itemIter->fPos());
-		//	m_d->m_itemsMap->erase(itemIter);*/
-		//	return true;
-		//}
+		bool removeAt(const uint& index)
+		{
+			m_d.detach();
+			reWriteMap(index+1, index);
+			return true;
+		}
 
 		//void clear()
 		//{
