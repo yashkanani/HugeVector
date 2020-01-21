@@ -49,7 +49,7 @@ namespace HugeContainers {
 		{
 			explicit Frame::Frame(qint64 fp, qint64 fs)
 				: m_fPos(fp), m_fSize(fs)
-			{}
+			{};
 			qint64 m_fPos;
 			qint64 m_fSize;
 		} Frame;
@@ -288,39 +288,82 @@ namespace HugeContainers {
 
 		std::unique_ptr<ValueType> valueFromBlock(const uint& index) const
 		{
-			QByteArray block = readBlock(index);
+			/*read address of data*/
+			QByteArray rawFram = readMap(index);
+			if (rawFram.isEmpty()) {
+				return nullptr;
+			}
+
+			/* decode address and size */
+			auto frame = std::make_unique<Frame>(-1,-1);
+			QDataStream Stream(rawFram);
+			Stream >> frame->m_fPos;
+			Stream >> frame->m_fSize;
+
+			/*read data*/
+			QByteArray block = readData(*frame);
 			if (block.isEmpty())
 				return nullptr;
+
+			/*decode data*/
 			auto result = std::make_unique<ValueType>();
 			QDataStream readerStream(block);
 			readerStream >> *result;
 			return result;
 		}
 
-		QByteArray readBlock(const uint& index ) const
+		//QByteArray readBlock(const uint& index ) const
+		//{
+		//	if (Q_UNLIKELY(!m_d->m_device->isReadable()))
+		//		return QByteArray();
+		//	m_d->m_device->setTextModeEnabled(false);
+		//	
+		//	auto itemIter = m_d->m_itemsMap->begin() + index;       //  get iterator at particular position
+		//	Q_ASSERT(itemIter != m_d->m_itemsMap->end());
+		//	Q_ASSERT(!itemIter->isAvailable());
+		//	
+		//	auto fileIter = m_d->m_memoryMap->constFind(itemIter->fPos());
+		//	Q_ASSERT(fileIter != m_d->m_memoryMap->constEnd());
+		//	if (fileIter.value())
+		//		return QByteArray();
+		//	
+		//	auto nextIter = fileIter + 1;
+		//	m_d->m_device->seek(fileIter.key());
+		//	
+		//	QByteArray result;
+		//	/*if (nextIter == m_d->m_memoryMap->constEnd())
+		//		result = m_d->m_device->readAll();
+		//	else
+		//		result = m_d->m_device->read(nextIter.key() - fileIter.key());*/
+		//	
+		//	return result;
+		//}
+
+		QByteArray readData(const Frame& dataFrame) const
 		{
-			//if (Q_UNLIKELY(!m_d->m_device->isReadable()))
-			//	return QByteArray();
-			//m_d->m_device->setTextModeEnabled(false);
-			//
-			//auto itemIter = m_d->m_itemsMap->begin() + index;       //  get iterator at particular position
-			//Q_ASSERT(itemIter != m_d->m_itemsMap->end());
-			//Q_ASSERT(!itemIter->isAvailable());
-			//
-			//auto fileIter = m_d->m_memoryMap->constFind(itemIter->fPos());
-			//Q_ASSERT(fileIter != m_d->m_memoryMap->constEnd());
-			//if (fileIter.value())
-			//	return QByteArray();
-			//
-			//auto nextIter = fileIter + 1;
-			//m_d->m_device->seek(fileIter.key());
-			
+			if (Q_UNLIKELY(!m_d->m_device->isReadable()))
+				return QByteArray();
+			m_d->m_device->setTextModeEnabled(false);
+			m_d->m_device->seek(dataFrame.m_fPos);
+
 			QByteArray result;
-			/*if (nextIter == m_d->m_memoryMap->constEnd())
-				result = m_d->m_device->readAll();
-			else
-				result = m_d->m_device->read(nextIter.key() - fileIter.key());*/
+			result = m_d->m_device->read(dataFrame.m_fSize);
+			return result;
+		}
+
+
+		QByteArray readMap(const uint& index) const {
+
+			if (Q_UNLIKELY(!m_d->m_device->isReadable()))
+				return QByteArray();
+			m_d->m_memoryMap->setTextModeEnabled(false);
 			
+			auto startPos = index * sizeof(Frame);
+			m_d->m_memoryMap->seek(startPos);
+
+			QByteArray result; 
+			result = m_d->m_memoryMap->read(sizeof(Frame)); 
+				
 			return result;
 		}
 
@@ -351,7 +394,7 @@ namespace HugeContainers {
 			enqueueValue(tempval);
 		}
 		
-		/*void push_back(ValueType* val)
+		void push_back(ValueType* val)
 		{
 			if (!val)
 				return;
@@ -359,7 +402,7 @@ namespace HugeContainers {
 			std::unique_ptr<ValueType> tempval(val);
 			enqueueValue(tempval);
 			
-		}*/
+		}
 
 		/*if index is not correct then append to the vector*/
 		//void insert(uint index, const ValueType &val) {
@@ -390,20 +433,15 @@ namespace HugeContainers {
 		//}
 
 
-		///* Must be put correct index for finding value */
-		//const ValueType& at(const uint& index)
-		//{
-		//	Q_ASSERT(!isEmpty());
-
-		//	auto valueIter = m_d->m_itemsMap->begin() + index;
-		//	Q_ASSERT(valueIter != m_d->m_itemsMap->end());
-		//	
-		//	auto result = valueFromBlock(index);
-		//	Q_ASSERT(result);
-		//	
-		//	m_d.detach();
-		//	return *(result.release());
-		//}
+		/* Must be put correct index for finding value */
+		const ValueType& at(const uint& index)
+		{
+			auto result = valueFromBlock(index);
+			Q_ASSERT(result);
+			
+			m_d.detach();
+			return *(result.release());
+		}
 
 		//bool removeAt(const uint& index)
 		//{
