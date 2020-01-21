@@ -359,32 +359,6 @@ namespace HugeContainers {
 			return result;
 		}
 
-		//QByteArray readBlock(const uint& index ) const
-		//{
-		//	if (Q_UNLIKELY(!m_d->m_device->isReadable()))
-		//		return QByteArray();
-		//	m_d->m_device->setTextModeEnabled(false);
-		//	
-		//	auto itemIter = m_d->m_itemsMap->begin() + index;       //  get iterator at particular position
-		//	Q_ASSERT(itemIter != m_d->m_itemsMap->end());
-		//	Q_ASSERT(!itemIter->isAvailable());
-		//	
-		//	auto fileIter = m_d->m_memoryMap->constFind(itemIter->fPos());
-		//	Q_ASSERT(fileIter != m_d->m_memoryMap->constEnd());
-		//	if (fileIter.value())
-		//		return QByteArray();
-		//	
-		//	auto nextIter = fileIter + 1;
-		//	m_d->m_device->seek(fileIter.key());
-		//	
-		//	QByteArray result;
-		//	/*if (nextIter == m_d->m_memoryMap->constEnd())
-		//		result = m_d->m_device->readAll();
-		//	else
-		//		result = m_d->m_device->read(nextIter.key() - fileIter.key());*/
-		//	
-		//	return result;
-		//}
 
 		QByteArray readData(const Frame& dataFrame) const
 		{
