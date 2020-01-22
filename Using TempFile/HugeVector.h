@@ -305,13 +305,19 @@ namespace HugeContainers {
 			/*Write the value in DataFile*/
 			const Frame result = writeElementInData(*(valToWrite->val()));
 			if (result.m_fPos >= 0) {
-				/*Write the data in Address File*/
+				/*
+				    Whenever push_back funcation is called at that time 
+				    elements is append in file. 
+				*/
 				if (index < 0) {
 				   allOk = writeElementInMap(result); 
 				}
 				else {
-				 // Whenever insert funcation is called at that time 
-				 // Address file will rewrite.
+				 /* 
+				    Whenever insert funcation is called at that time 
+				    Address file will rewrite and elements is write at 
+					particular location. 
+				 */
 					if (reWriteMap(index, index + 1)) {
 						auto pos = m_d->m_memoryMap->pos();
 						m_d->m_memoryMap->seek(index * sizeof(Frame));
@@ -432,11 +438,22 @@ namespace HugeContainers {
 			
 		}
 
-		/*if index is not correct then append to the vector*/
+		/*
+		  if index is same as size() then value append to the file
+		  if index is correct then insert the value at particular location.  
+		*/
 		void insert(uint index, const ValueType &val) {
+			
 			m_d.detach();
 			auto tempval = std::make_unique<ValueType>(val);
-			enqueueValue(tempval, index);
+			
+			if (index != size()) {
+				Q_ASSERT(correctIndex(index));
+				enqueueValue(tempval, index);
+			}
+			else {
+				enqueueValue(tempval);
+			}
 		}
 
 
@@ -448,7 +465,13 @@ namespace HugeContainers {
 			m_d.detach();
 			std::unique_ptr<ValueType> tempval(val);
 
-			enqueueValue(tempval, index);
+			if (index != size()) {
+				Q_ASSERT(correctIndex(index));
+				enqueueValue(tempval, index);
+			}
+			else {
+				enqueueValue(tempval);
+			}
 		}
 
 
